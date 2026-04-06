@@ -4,6 +4,9 @@ const router = express.Router();
 const MAX_DEBATE_TURNS = 6;
 const AGREEMENT_MARKER = 'FINAL AGREEMENT';
 const REPETITION_THRESHOLD = 0.78;
+const FOLLOW_UP_START_PATTERN = /^(what about|what if|how about|and\b|so\b|then\b|but\b|also\b|now\b|okay\b|ok\b|in that case|if so|if not)/i;
+const FOLLOW_UP_REFERENCE_PATTERN = /\b(this|that|it|they|them|those|these|he|she|him|her|its|their|there|here|same|above|earlier|previous|startup|situation|case)\b/i;
+const GREETING_PATTERN = /^(hi|hello|hey|hii|yo|sup|hola|namaste|good morning|good afternoon|good evening)\b[!. ]*$/i;
 
 function normalizeModelName(value, fallback) {
   return (value || fallback).trim().replace(/\s+/g, '');
@@ -54,7 +57,7 @@ function labelForHistoryItem(item) {
   if (item.role === 'user') return 'User';
   if (item.role === 'agentA') return 'Agent A';
   if (item.role === 'agentB') return 'Agent B';
-  if (item.role === 'judge') return 'Judge Verdict';
+  if (item.role === 'judge') return 'Answer';
   if (item.role === 'system') return 'System';
   return item.label || 'Message';
 }
@@ -71,12 +74,42 @@ function formatConversationHistory(history) {
 
 function formatTranscript(transcript) {
   if (!transcript.length) {
-    return 'No debate history yet.';
+    return 'No agent conversation yet.';
   }
 
   return transcript
     .map((entry, index) => `${index + 1}. Agent ${entry.agent}: ${entry.message}`)
     .join('\n\n');
+}
+
+function isLikelyFollowUpPrompt(prompt) {
+  const normalized = prompt.trim();
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+
+  if (FOLLOW_UP_START_PATTERN.test(normalized)) {
+    return true;
+  }
+
+  return wordCount <= 18 && FOLLOW_UP_REFERENCE_PATTERN.test(normalized);
+}
+
+function buildConversationContext(prompt, conversationHistory) {
+  if (!conversationHistory?.length) {
+    return 'No prior conversation. Treat this as a standalone question.';
+  }
+
+  if (!isLikelyFollowUpPrompt(prompt)) {
+    return [
+      'There is earlier chat history, but the current prompt should be treated as a fresh standalone question unless the user explicitly refers back to earlier context.',
+      'Do not anchor the answer to earlier topics by default.',
+    ].join('\n');
+  }
+
+  const recentHistory = conversationHistory.slice(-8);
+  return [
+    'This prompt looks like a follow-up, so use the recent conversation only where it is clearly relevant.',
+    formatConversationHistory(recentHistory),
+  ].join('\n\n');
 }
 
 function buildAgentMessages({ prompt, conversationHistory, transcript, selfAgent, selfModel, otherAgent, stage }) {
@@ -85,23 +118,27 @@ function buildAgentMessages({ prompt, conversationHistory, transcript, selfAgent
     stage === 'opening'
       ? [
           `You are Agent ${selfAgent} using ${selfModel}.`,
-          'Give a short opening opinion for the user in exactly 4 to 5 short lines.',
+          'Treat the current user message as its own question unless it explicitly depends on earlier chat context.',
+          'Speak like a thoughtful assistant helping the user, not like a report generator.',
+          'Give a short opening opinion in exactly 4 to 5 short conversational lines.',
           'Each line should be one clear point, not a paragraph.',
           `Do not say ${AGREEMENT_MARKER} unless you truly want to end the debate.`,
         ]
       : [
           `You are Agent ${selfAgent} using ${selfModel}.`,
+          'Treat the current user message as its own question unless it explicitly depends on earlier chat context.',
+          'Speak like a thoughtful assistant helping the user, not like a report generator.',
           `Read the latest message from Agent ${otherAgent}, respond directly, defend your reasoning, challenge weak points, and refine your stance if needed.`,
-          `Reply in exactly 4 to 5 short lines. If you are genuinely convinced enough to converge, include the exact phrase ${AGREEMENT_MARKER}.`,
+          `Reply in exactly 4 to 5 short conversational lines. If you are genuinely convinced enough to converge, include the exact phrase ${AGREEMENT_MARKER}.`,
           'Avoid repeating yourself and keep every line concrete.',
         ];
 
   const userPrompt = [
     `Current user message: ${prompt}`,
     '',
-    `Earlier conversation context:\n${formatConversationHistory(conversationHistory)}`,
+    `Conversation context policy:\n${buildConversationContext(prompt, conversationHistory)}`,
     '',
-    `Current debate transcript:\n${formatTranscript(transcript)}`,
+    `Current agent conversation:\n${formatTranscript(transcript)}`,
     '',
     latestOpponentMessage
       ? `Latest message from Agent ${otherAgent}: ${latestOpponentMessage.message}`
@@ -115,18 +152,21 @@ function buildAgentMessages({ prompt, conversationHistory, transcript, selfAgent
 }
 
 function buildJudgeMessages(prompt, conversationHistory, transcript, judgeModel) {
+  const isGreeting = GREETING_PATTERN.test(prompt.trim());
+
   return [
     {
       role: 'system',
       content: [
-        `You are the judge model ${judgeModel}.`,
-        'Read the earlier conversation and the current debate transcript.',
-        'Produce exactly four sections in this order:',
-        'Key Agreements',
-        'Key Disagreements',
-        'Final Verdict',
-        'Concise Answer',
-        'Keep each section tight and practical. The Concise Answer must be one paragraph for the chat history summary.',
+        `You are the final assistant model ${judgeModel}.`,
+        'Reply directly to the user in a natural, conversational tone.',
+        'Treat the current user message as a standalone question unless it explicitly depends on earlier chat context.',
+        'Use earlier conversation only if it is clearly relevant to this prompt.',
+        'Read the conversation context guidance and the current agent conversation before answering.',
+        isGreeting
+          ? 'The user is greeting you. Respond warmly, naturally, and briefly, then offer help.'
+          : 'Give one refined final answer based on the agent conversation. Do not output headings, bullet labels, report sections, or meta commentary.',
+        'Your output must be only the final answer text that should appear in chat.',
       ].join('\n'),
     },
     {
@@ -134,21 +174,16 @@ function buildJudgeMessages(prompt, conversationHistory, transcript, judgeModel)
       content: [
         `Current user message: ${prompt}`,
         '',
-        `Earlier conversation context:\n${formatConversationHistory(conversationHistory)}`,
+        `Conversation context policy:\n${buildConversationContext(prompt, conversationHistory)}`,
         '',
-        `Current debate transcript:\n${formatTranscript(transcript)}`,
+        `Current agent conversation:\n${formatTranscript(transcript)}`,
       ].join('\n'),
     },
   ];
 }
 
 function extractConciseAnswer(verdict) {
-  const match = verdict.match(/Concise Answer\s*[:\n]+([\s\S]*)/i);
-  if (!match) {
-    return verdict.trim();
-  }
-
-  return match[1].trim();
+  return verdict.trim();
 }
 
 function normalizeText(value) {
@@ -330,18 +365,20 @@ router.post('/', async (req, res) => {
     assertNotAborted(controller.signal);
     writeEvent(res, { type: 'status', stopReason });
 
-    const verdict = await callOllama(
+    const answer = await callOllama(
       config.judge,
       buildJudgeMessages(prompt, conversationHistory, transcript, config.judge),
       controller.signal,
       0.4
     );
 
+    const conciseAnswer = extractConciseAnswer(answer);
+
     writeEvent(res, {
       type: 'done',
       debate: transcript,
-      verdict,
-      conciseAnswer: extractConciseAnswer(verdict),
+      verdict: conciseAnswer,
+      conciseAnswer,
       stopReason,
       debaterOneName: config.debaterOne,
       debaterTwoName: config.debaterTwo,
