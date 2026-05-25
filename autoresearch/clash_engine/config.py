@@ -9,7 +9,7 @@ class AgentSpec:
     name: str
     role: str
     objective: str
-    model: str = 'llama3.2'
+    model: str = 'qwen3.5:4b'
     max_tokens: int = 220
 
 
@@ -30,7 +30,7 @@ class ConversationConfig:
     state_enabled: bool = True
     agents: list[AgentSpec] = field(default_factory=list)
     synthesizer: AgentSpec | None = None
-    evaluator_model: str = 'mistral'
+    evaluator_model: str = 'gemma4:e4b'
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -56,25 +56,25 @@ DEFAULT_AGENTS = [
         name='Analyst',
         role='Clarifies the problem, assumptions, and tradeoffs.',
         objective='Break the task into the core decision factors and frame the problem cleanly.',
-        model='llama3.2',
+        model='qwen3.5:4b',
     ),
     AgentSpec(
         name='Strategist',
         role='Finds the most leverageable path forward.',
         objective='Propose the best strategic options and explain why they matter.',
-        model='mistral',
+        model='gemma4:e4b',
     ),
     AgentSpec(
         name='Skeptic',
         role='Pressure-tests the reasoning and spots blind spots.',
         objective='Challenge weak assumptions, risks, and edge cases without being adversarial.',
-        model='llama3.2',
+        model='qwen3.5:4b',
     ),
     AgentSpec(
         name='Executor',
         role='Turns the reasoning into an actionable plan.',
         objective='Translate the discussion into concrete next steps, constraints, and execution details.',
-        model='mistral',
+        model='gemma4:e4b',
     ),
 ]
 
@@ -82,7 +82,7 @@ DEFAULT_SYNTHESIZER = AgentSpec(
     name='Synthesizer',
     role='Combines the multi-agent discussion into one user-facing recommendation.',
     objective='Write a clear, direct, useful recommendation for the user that reflects the agent conversation.',
-    model='mistral',
+    model='gemma4:e4b',
     max_tokens=320,
 )
 
@@ -105,5 +105,5 @@ def build_default_config(name: str = 'baseline-collab') -> ConversationConfig:
         state_enabled=True,
         agents=[AgentSpec(**asdict(agent)) for agent in DEFAULT_AGENTS],
         synthesizer=AgentSpec(**asdict(DEFAULT_SYNTHESIZER)),
-        evaluator_model='mistral',
+        evaluator_model='gemma4:e4b',
     )

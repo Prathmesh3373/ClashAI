@@ -13,14 +13,14 @@ function normalizeModelName(value, fallback) {
 }
 
 function getOllamaConfig() {
-  const debaterOne = normalizeModelName(process.env.OLLAMA_DEBATER_ONE, 'llama3.2');
-  const debaterTwo = normalizeModelName(process.env.OLLAMA_DEBATER_TWO, 'mistral');
+  const debaterOne = normalizeModelName(process.env.OLLAMA_DEBATER_ONE, 'qwen3.5:4b');
+  const debaterTwo = normalizeModelName(process.env.OLLAMA_DEBATER_TWO, 'gemma4:e4b');
 
   return {
     url: (process.env.OLLAMA_URL || 'http://localhost:11434').trim(),
     debaterOne,
     debaterTwo,
-    judge: normalizeModelName(process.env.OLLAMA_JUDGE, 'gpt-oss:20b'),
+    judge: normalizeModelName(process.env.OLLAMA_JUDGE, 'gemma4:e4b'),
   };
 }
 

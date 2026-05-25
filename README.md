@@ -20,7 +20,7 @@ This architecture is designed to push beyond one-shot generation. By allowing di
 
 ## Why Clash AI?
 
-In today’s AI era, most tools still give users a response from one model only. That creates a familiar limitation: the answer may be fast, but it is often unchallenged. A single-model response can miss nuance, overlook counterarguments, or settle too quickly on one perspective.
+In today's AI era, most tools still give users a response from one model only. That creates a familiar limitation: the answer may be fast, but it is often unchallenged. A single-model response can miss nuance, overlook counterarguments, or settle too quickly on one perspective.
 
 Clash AI is built around the idea that better answers can emerge when models debate, critique, and synthesize. Instead of treating AI as a single voice, this project treats it as a reasoning system with multiple perspectives.
 
@@ -81,8 +81,8 @@ Judge model produces the refined verdict
 - TailwindCSS
 - Framer Motion
 - Ollama
-- llama3.2
-- mistral
+- qwen3.5:4b
+- gemma4:e4b
 
 ## Current Architecture
 
@@ -93,7 +93,7 @@ Clash AI currently runs with a full-stack architecture:
 - Styling: TailwindCSS with a ChatGPT-style dark UI
 - Animation: Framer Motion for message transitions and status states
 - Local inference: Ollama for running local models
-- Models: `llama3.2` and `mistral` as debating agents, with a judge model for synthesis
+- Models: `qwen3.5:4b` and `gemma4:e4b` as debating agents, with a judge model for synthesis
 
 ## Future Vision
 
@@ -109,12 +109,12 @@ The broader vision is to move beyond the idea of AI as a single responder and to
 PORT=5000
 FRONTEND_URL=http://localhost:5173
 OLLAMA_URL=http://localhost:11434
-OLLAMA_DEBATER_ONE=llama3.2
-OLLAMA_DEBATER_TWO=mistral
-OLLAMA_JUDGE=gpt-oss:20b
+OLLAMA_DEBATER_ONE=qwen3.5:4b
+OLLAMA_DEBATER_TWO=gemma4:e4b
+OLLAMA_JUDGE=gemma4:e4b
 ```
 
-If the preferred judge model is not installed locally, point `OLLAMA_JUDGE` at another available model such as `mistral`.
+If the preferred judge model is not installed locally, point `OLLAMA_JUDGE` at another available model such as `qwen3.5:4b`.
 
 ### Run the backend
 
